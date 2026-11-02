@@ -1,0 +1,149 @@
+// PlanBDeal database schema
+// Datasource uses Supabase Postgres: pooled DATABASE_URL at runtime, direct DIRECT_URL for migrations.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum ListingStatus {
+  ACTIVE
+  SOLD
+  CANCELLED
+  EXPIRED
+}
+
+enum TransferMethod {
+  PROVIDER_APP_TRANSFER
+  EDIT_NAME_ON_BOOKING
+  EMAIL_TRANSFER
+  OTHER
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum NotificationType {
+  NEW_REQUEST
+  REQUEST_ACCEPTED
+  REQUEST_REJECTED
+  NEW_MESSAGE
+  LISTING_EXPIRED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  fullName     String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  listings          Listing[]        @relation("SellerListings")
+  sentRequests      ConnectRequest[] @relation("BuyerRequests")
+  buyerChatThreads  ChatThread[]     @relation("BuyerThreads")
+  sellerChatThreads ChatThread[]     @relation("SellerThreads")
+  messages          Message[]
+  notifications     Notification[]
+}
+
+model Listing {
+  id                     String         @id @default(cuid())
+  sellerId               String
+  seller                 User           @relation("SellerListings", fields: [sellerId], references: [id], onDelete: Cascade)
+  movieTitle             String
+  posterUrl              String?
+  language               String
+  theatreName            String
+  city                   String
+  theatreLocation        String?
+  showDateTime           DateTime
+  showtimeLabel          String
+  totalQuantity          Int
+  availableQuantity      Int
+  originalPricePerTicket Decimal        @db.Decimal(10, 2)
+  askingPricePerTicket   Decimal        @db.Decimal(10, 2)
+  provider               String
+  transferEligibility    Boolean        @default(true)
+  transferMethod         TransferMethod
+  seatInfo               String?
+  description            String?
+  status                 ListingStatus  @default(ACTIVE)
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  requests    ConnectRequest[]
+  chatThreads ChatThread[]
+
+  @@index([city, movieTitle, showDateTime, status])
+}
+
+model ConnectRequest {
+  id        String        @id @default(cuid())
+  listingId String
+  listing   Listing       @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyerId   String
+  buyer     User          @relation("BuyerRequests", fields: [buyerId], references: [id], onDelete: Cascade)
+  quantity  Int
+  message   String?
+  status    RequestStatus @default(PENDING)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  chatThread ChatThread?
+
+  @@index([listingId, buyerId, status])
+}
+
+model ChatThread {
+  id        String   @id @default(cuid())
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  requestId String   @unique
+  request   ConnectRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  buyerId   String
+  buyer     User     @relation("BuyerThreads", fields: [buyerId], references: [id], onDelete: Cascade)
+  sellerId  String
+  seller    User     @relation("SellerThreads", fields: [sellerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  messages Message[]
+}
+
+model Message {
+  id           String     @id @default(cuid())
+  chatThreadId String
+  chatThread   ChatThread @relation(fields: [chatThreadId], references: [id], onDelete: Cascade)
+  senderId     String
+  sender       User       @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content      String
+  createdAt    DateTime   @default(now())
+  readAt       DateTime?
+
+  @@index([chatThreadId, createdAt])
+}
+
+model Notification {
+  id                   String           @id @default(cuid())
+  userId               String
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type                 NotificationType
+  title                String
+  message              String
+  relatedListingId     String?
+  relatedRequestId     String?
+  relatedChatThreadId  String?
+  readAt               DateTime?
+  createdAt            DateTime         @default(now())
+
+  @@index([userId, readAt])
+}
